@@ -16,11 +16,11 @@ ODIR    := obj
 SOURCES := src
 INCLUDES := include
 
-_DEPS := include/gba_defines.h  include/gba_graphics.h  include/gba_helper_funcs.h  include/test.h 
-_IWRAM_DEPS := include/vblanks_interrupt.iwram.h
-_SRC := src/main.c src/gba_graphics.c src/gba_helper_funcs.c
-_IWRAM_SRC := src/vblanks_interrupt.iwram.c
-_OBJS := build/main.o build/gba_graphics.o build/gba_helper_funcs.o build/vblanks_interrupt.iwram.o
+DEPS := $(INCLUDES)/gba_defines.h  $(INCLUDES)/gba_graphics.h  $(INCLUDES)/gba_helper_funcs.h  $(INCLUDES)/test.h 
+IWRAM_DEPS := $(INCLUDES)/vblanks_interrupt.iwram.h
+SRC := $(SOURCES)/main.c $(SOURCES)/gba_graphics.c $(SOURCES)/gba_helper_funcs.c
+IWRAM_SRC := $(SOURCES)/vblanks_interrupt.iwram.c
+OBJS := $(BUILD)/main.o $(BUILD)/gba_graphics.o $(BUILD)/gba_helper_funcs.o $(BUILD)/vblanks_interrupt.iwram.o
 
 ARCH := 
 LIBS := 
@@ -28,22 +28,30 @@ LIBS :=
 GBASPECS := C:\devkitPro\devkitARM\arm-none-eabi\lib\gba.specs
 
 #To-Do: Make rule that executes all rules. Add rule that moves object files into the correct folder
-.PHONY: all
+.PHONY: all clean cleanall
 all: buildthumb buildarm moveobjects buildelf buildgba gbafix
 
-#define rule to make object files dependent on .c and .h files
-buildthumb  : $(_SRC) $(_DEPS)
-	$(CC) -c $(_SRC) $(CFLAGS) -I$(INCLUDES)
+clean:
+	rm -f $(BUILD)/*.o *.o
 
-buildarm  : $(_IWRAM_SRC) $(_IWRAM_DEPS)
-	$(CC) -c $(_IWRAM_SRC) $(ARMFLAGS) -I$(INCLUDES)
+cleanall:
+	rm -r $(BUILD)/
+
+### actual targets
+
+#define rule to make object files dependent on .c and .h files
+buildthumb  : $(SRC) $(DEPS)
+	$(CC) -c $(SRC) $(CFLAGS) -I$(INCLUDES)
+
+buildarm  : $(IWRAM_SRC) $(IWRAM_DEPS)
+	$(CC) -c $(IWRAM_SRC) $(ARMFLAGS) -I$(INCLUDES)
 
 moveobjects :
 	mkdir $(BUILD); mv *.o $(BUILD)/
 
 #link object files into elf file
 buildelf : $(_OBJS)
-	$(CC) $(_OBJS) -mthumb-interwork -mthumb -specs=$(GBASPECS) -o $(BUILD)/$(TARGET).elf
+	$(CC) $(OBJS) -mthumb-interwork -mthumb -specs=$(GBASPECS) -o $(BUILD)/$(TARGET).elf
 
 #create a gba file from the elf file
 buildgba : $(BUILD)/$(TARGET).elf
@@ -52,8 +60,3 @@ buildgba : $(BUILD)/$(TARGET).elf
 #fix gba header
 gbafix : $(BUILD)/$(TARGET).gba
 	$(GBAFIX) $<
-
-
-.PHONY: clean
-clean:
-	rm -f $(BUILD)/*.o *.o
