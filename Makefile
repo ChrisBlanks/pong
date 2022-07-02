@@ -17,9 +17,10 @@ SOURCES := src
 INCLUDES := include
 
 DEPS := $(INCLUDES)/gba_defines.h  $(INCLUDES)/gba_graphics.h  $(INCLUDES)/gba_helper_funcs.h  $(INCLUDES)/test.h 
-IWRAM_DEPS := $(INCLUDES)/vblanks_interrupt.iwram.h
 SRC := $(SOURCES)/main.c $(SOURCES)/gba_graphics.c $(SOURCES)/gba_helper_funcs.c
+IWRAM_DEPS := $(INCLUDES)/vblanks_interrupt.iwram.h
 IWRAM_SRC := $(SOURCES)/vblanks_interrupt.iwram.c
+
 OBJS := $(BUILD)/main.o $(BUILD)/gba_graphics.o $(BUILD)/gba_helper_funcs.o $(BUILD)/vblanks_interrupt.iwram.o
 
 ARCH := 
