@@ -2,14 +2,14 @@
 
 #define compiler and flags
 CC := arm-none-eabi-gcc
-CFLAGS := -mthumb-interwork -mthumb -O2
-ARMFLAGS := -mthumb-interwork -marm -O2
+CFLAGS := -mthumb-interwork -mthumb -O2 -Wall -g
+ARMFLAGS := -mthumb-interwork -marm -O2 -Wall -g
 
 #define other build steps
 ELFCOPY := arm-none-eabi-objcopy
 GBAFIX := gbafix 
 
-#define relevant directories
+#define project directories
 TARGET := pong
 BUILD  := build
 ODIR    := obj
@@ -25,6 +25,8 @@ OBJS := $(BUILD)/main.o $(BUILD)/gba_graphics.o $(BUILD)/gba_helper_funcs.o $(BU
 
 ARCH := 
 LIBS := 
+
+LIBGBA := C:\libgba
 
 GBASPECS := C:\devkitPro\devkitARM\arm-none-eabi\lib\gba.specs
 
@@ -42,17 +44,18 @@ cleanall:
 
 #define rule to make object files dependent on .c and .h files
 buildthumb  : $(SRC) $(DEPS)
-	$(CC) -c $(SRC) $(CFLAGS) -I$(INCLUDES)
+	$(CC) -c $(SRC) $(CFLAGS) -I$(INCLUDES) -I$(LIBGBA)\$(INCLUDES)
 
 buildarm  : $(IWRAM_SRC) $(IWRAM_DEPS)
-	$(CC) -c $(IWRAM_SRC) $(ARMFLAGS) -I$(INCLUDES)
+	$(CC) -c $(IWRAM_SRC) $(ARMFLAGS) -I$(INCLUDES) 
 
 moveobjects :
 	mkdir $(BUILD); mv *.o $(BUILD)/
 
 #link object files into elf file
 buildelf : $(_OBJS)
-	$(CC) $(OBJS) -mthumb-interwork -mthumb -specs=$(GBASPECS) -o $(BUILD)/$(TARGET).elf
+	$(CC) $(OBJS) -LC:\libgba\lib  -lgba -mthumb-interwork -mthumb -specs=$(GBASPECS) -o $(BUILD)/$(TARGET).elf
+# alternative:	$(CC) $(OBJS) C:\libgba\lib\libgba.a -mthumb-interwork -mthumb -specs=$(GBASPECS) -o $(BUILD)/$(TARGET).elf  
 
 #create a gba file from the elf file
 buildgba : $(BUILD)/$(TARGET).elf
