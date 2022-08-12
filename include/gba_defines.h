@@ -22,10 +22,12 @@
 #define MEM_VRAM 0x06000000
 #define MEM_OAM  0x07000000
 
-#define REG_DISPLAY         (MEM_IO + 0x0000)
-#define REG_DISPLAY_STATUS  (MEM_IO + 0x0004)
-#define REG_DISPLAY_VCOUNT  (MEM_IO + 0x0006)
-#define REG_KEY_INPUT       (MEM_IO + 0x0130)
+#define REG_DISPLAY           (MEM_IO + 0x0000)
+#define REG_DISPLAY_STATUS    (MEM_IO + 0x0004)
+#define REG_DISPLAY_VCOUNT    (MEM_IO + 0x0006)
+#define REG_TEXT_BG_CONTROL_0 (MEM_IO + 0x0008)
+#define REG_TEXT_BG_CONTROL_1 (MEM_IO + 0x000A)
+#define REG_KEY_INPUT         (MEM_IO + 0x0130)
 
 //// reg display values
 #define REG_DISPLAY_STATUS_VBLANK_INTERRUPT_ENABLE    0x0008
