@@ -171,12 +171,11 @@ int main(void){
                 );
 
     //BG_COLORS[0]=RGB8(58,110,165);
-    BG_COLORS[0]=RGB8(0,127,0);
+    BG_COLORS[0]=RGB8(255,127,255);
 	BG_COLORS[241]=RGB5(31,31,31);
 
     //select BG mode 0, select BG0/BG1/OBJ, and set OBJ character to be handled in memory 1-dimensional
-    SetMode(MODE_0 | BG0_ON | BG1_ON | OBJ_ON | OBJ_1D_MAP);
-    //To-Do: Fix issue w/ weird background
+    SetMode(MODE_0 | OBJ_ON | BG0_ON | OBJ_1D_MAP);
 
     // Write the tiles for our sprites into the fourth tile block in VRAM
     // Four tiles for an 8x32 paddle sprite, and one tile for an 8x8 ball sprite
