@@ -170,7 +170,6 @@ int main(void){
 					15		// 16 color palette
                 );
 
-    //BG_COLORS[0]=RGB8(58,110,165);
     BG_COLORS[0]=RGB8(255,127,255);
 	BG_COLORS[241]=RGB5(31,31,31);
 
@@ -178,22 +177,31 @@ int main(void){
     SetMode(MODE_0 | OBJ_ON | BG0_ON | OBJ_1D_MAP);
 
     // Write the tiles for our sprites into the fourth tile block in VRAM
-    // Four tiles for an 8x32 paddle sprite, and one tile for an 8x8 ball sprite
-    // Using 4bpp, 0x1111 is four pixels of color index 1. 0x2222 is four pixels of color index 2
-    volatile uint16* paddleTileMem= (uint16*)TILE_MEM[4][1];
-    volatile uint16* ballTileMem= (uint16*)TILE_MEM[4][5];
+    //first index is for the tile block; second index is for the address within the tile block
+    volatile uint16* paddleTileMem= (uint16*)TILE_MEM[4][1];    // Reserving four tiles for an 8x32 paddle sprite
+    volatile uint16* ballTileMem= (uint16*)TILE_MEM[4][5];      // Reserving one tile for an 8x8 ball sprite
+    volatile uint16* opponentTileMem = (uint16*)TILE_MEM[4][7]; // Reserving four tiles for an 8x32 paddle sprite
 
+    // Using 4bpp, 0x1111 is four pixels of color index 1. 0x2222 is four pixels of color index 2
+    // For 16 Colors x 16 Palette mode, 4 bits per dot; 2 dots per address in VRAM
     for(int i=0; i < 4 *(sizeof(tile_4bpp)/2); ++i){
-        paddleTileMem[i] = 0x1111;
+        paddleTileMem[i] = 0x1111; // 0001 0001 0001 0001
     }
 
     for(int i=0; i < (sizeof(tile_4bpp)/2); ++i){
-        ballTileMem[i] = 0x2222;
+        ballTileMem[i] = 0x2222;  // 0010 0010 0010 0010
     }
+
+    
+    for(int i=0; i < 4 *(sizeof(tile_4bpp)/2); ++i){
+        opponentTileMem[i] = 0x1111; // 0011 0011 0011 0011
+    }
+    
 
     // Write the color palette for our sprites into the 1st palette of 16 colors in color palette memory
     OBJECT_PALETTE_MEM[1] = RGB15(0x1F,0x1F,0x1F); // white color
     OBJECT_PALETTE_MEM[2] = RGB15(0x1F,0x00,0x1F); // magenta color
+    OBJECT_PALETTE_MEM[3] = RGB15(0x1F,0x00,0x00); // red color
     
     //create the sprites by writing their object attributes into OAM memory
     volatile obj_attrs* paddleAttrs = &OAM_MEM[0];
@@ -206,47 +214,76 @@ int main(void){
     ballAttrs->attr1 = 0; // 8x8 size when using the SQUARE shape
     ballAttrs->attr2 = 5; // start at the 5th tile in tile block four & use color palette zero
 
+    
+    volatile obj_attrs* opponentAttrs = &OAM_MEM[2];
+    opponentAttrs->attr0 = 0x8000; // 4bpp tiles, TALL shape
+    opponentAttrs->attr1 = 0x4000; // 8x32 size when using the TALL shape
+    opponentAttrs->attr2 = 1; // start at the 1st tile in tile block 4 & use color palette zero
+    
     //initialize variables to keep track of the state of the paddle & ball
     //set initial positions by modifying the object's attributes in OAM
 
     const int playerWidth  = 8,
               playerHeight = 32;
+    
 
-    const int playerMaxClampY = SCREEN_HEIGHT - playerHeight;
-    const int playerMaxClampX = SCREEN_WIDTH - playerWidth;
+    const int opponentWidth = 8,
+              opponentHeight = 32;
+
+    const int playerMaxClampY = SCREEN_HEIGHT - playerHeight,
+              playerMaxClampX = SCREEN_WIDTH - playerWidth;
+
+
+    const int opponentMaxClampY = SCREEN_HEIGHT - opponentHeight,
+              opponentMaxClampX = SCREEN_WIDTH - opponentWidth;   
 
     const int ballWidth  = 8,
               ballHeight = 8;
 
-        //calculate ball velocity and position
-    const int ballMaxClampX = SCREEN_WIDTH - ballWidth;
-    const int ballMaxClampY = SCREEN_HEIGHT - ballHeight;
+    //calculate ball velocity and position
+    const int ballMaxClampX = SCREEN_WIDTH - ballWidth,
+              ballMaxClampY = SCREEN_HEIGHT - ballHeight;
 
     int playerVelocity = 2;
+    int opponentVelocity = 2;
+
     int ballVelocityX = 2,
         ballVelocityY = 1;
-    int playerX = 5,
+    
+    //initial display positions
+    int playerX = 20,
         playerY = 96;
+
+    int opponentX = SCREEN_WIDTH - ( 2* opponentWidth),
+        opponentY= SCREEN_HEIGHT - ( 2* opponentHeight);
+
     int ballX = 22,
         ballY = 96;
 
+    //set initial positions
+    setObjectPosition(paddleAttrs, playerX,playerY);
+    setObjectPosition(ballAttrs, ballX,ballY);
+    setObjectPosition(opponentAttrs, opponentX, opponentY);
+
+    unsigned short keyStates = 0;
+
+    //game loop variables
     int colorChangeToggle=0; //controls the color of the paddle
     int pauseToggle=0; // controls the pause state of game
 
-    setObjectPosition(paddleAttrs, playerX,playerY);
-    setObjectPosition(ballAttrs, ballX,ballY);
-
-    unsigned short keyStates = 0;
     int frame_count= 0;
     int score = 0;
 
     int previous_sec=0;
     int last_frame_count = 0;
 
-    while(1){ //loop forever
+    //game loop
+    while(1){ 
         vsync(); //skip past the rest of any current V-Blanks period & then skip past the V-Draw period
         frame_count++; //increment frame count
-        iprintf("\x1b[16;0HFrames: %d!\n",frame_count);
+
+        //display frame count
+        //iprintf("\x1b[16;0HFrames: %d!\n",frame_count);
         
         //vblankInterruptWait();
 
@@ -255,10 +292,16 @@ int main(void){
 
         if(keyStates & KEY_START){ //if start key is pressed, "pause" game via not updating objects
             pauseToggle = !pauseToggle;
+            if(pauseToggle){
+                iprintf("\x1b[10;15HPause\n"); //add pause to screen
+            } else{
+                iprintf("\x1b[10;15H       "); //clear pause
+            }
         }
 
         if(!pauseToggle){
-
+            
+            //Update player position
             if(keyStates & KEY_UP){ //if up key is pressed, calculate next position upwards
                 playerY = clampValue(playerY - playerVelocity, 0, playerMaxClampY);
             }
@@ -267,6 +310,7 @@ int main(void){
                 playerY = clampValue(playerY + playerVelocity, 0, playerMaxClampY);
             }
 
+            /*
             if(keyStates & KEY_LEFT){ //if up key is pressed, calculate next position upwards
                 playerX = clampValue(playerX - playerVelocity, 0, playerMaxClampX);
             }
@@ -274,14 +318,23 @@ int main(void){
             if(keyStates & KEY_RIGHT){ //if down key is pressed, calculate next position downwards
                 playerX = clampValue(playerX + playerVelocity, 0, playerMaxClampX);
             }
+            */
 
             if(keyStates & KEY_UP || keyStates & KEY_DOWN || keyStates & KEY_LEFT || keyStates & KEY_RIGHT){ //if down key is pressed, calculate next position downwards
                 setObjectPosition(paddleAttrs, playerX, playerY);
             }
 
+            //update opponent position
+            if(opponentY == 0 || opponentY == opponentMaxClampY ){ //if oponent position is equal to bounds, flip velocity
+                opponentVelocity *= -1;
+            }
+            opponentY = clampValue(opponentY + opponentVelocity, 0, opponentMaxClampY);
+            setObjectPosition(opponentAttrs, opponentX, opponentY);
+
             //check bounds of ball to see if it intersects with the player paddle
             if( (ballX >= playerX && ballX <= playerX + playerWidth) && 
                 (ballY >= playerY && ballY <= playerY + playerHeight ) ){
+                
                 ballX= playerX + playerWidth; //set ball position to edge of player/paddle
                 ballVelocityX = -ballVelocityX; // change X velocity to rebound the ball. Y position unchanged
 
@@ -310,7 +363,7 @@ int main(void){
             ballY = clampValue(ballY+ ballVelocityY, 0, ballMaxClampY);
             setObjectPosition(ballAttrs, ballX,ballY);
 
-            iprintf("\x1b[0;0HScore: %d\n",score);
+            iprintf("\x1b[1;0HScore: %d\n",score);
         }
 
         //report number of seconds past via timer 2 value (overflow of timer 1 is approx. 1 sec)
@@ -318,11 +371,12 @@ int main(void){
         //overflow of timer register (2^16 = 65,536). Because approximation is less than actual, 
         //frames per second (FPS aka frame rate) is a little lower
         unsigned short one_sec_timer_count = *timer2_data;
-        iprintf("\x1b[0;13HTimer 2: %d sec\n",one_sec_timer_count);
+        iprintf("\x1b[18;23H%d sec\n",one_sec_timer_count);
 
-        if(one_sec_timer_count > previous_sec){ //if count is updated, caculate FPS
+        if(one_sec_timer_count > previous_sec){ //if 1 second has passed, implement game logic
+            //caculate & display FPS
             int fps = frame_count - last_frame_count;
-            iprintf("\x1b[15;15HFPS: %d\n",fps);
+            iprintf("\x1b[18;0HFPS: %d\n",fps);
 
             //update values for next calculation
             last_frame_count = frame_count;
