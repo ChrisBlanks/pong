@@ -6,13 +6,13 @@
 
 IWRAM_CODE void executeVBlankInterrupt(void){
 
-    volatile unsigned short* interrupt_master = (volatile unsigned short*)INTERRUPT_MASTER_ENABLE;
-    volatile unsigned short* interrupt_status = (volatile unsigned short*)INTERRUPT_REQUEST_STATUS;
-    volatile unsigned short* interrupt_check_flag = (volatile unsigned short*)INTERRUPT_CHECK_FLAG;
+    volatile unsigned short* interrupt_master = (volatile unsigned short*)INTERRUPT_MASTER_ENABLE;  //REG_IME
+    volatile unsigned short* interrupt_status = (volatile unsigned short*)INTERRUPT_REQUEST_STATUS; //REG_IF
+    volatile unsigned short* interrupt_check_flag = (volatile unsigned short*)INTERRUPT_CHECK_FLAG; //REG_IFBIOS
 
     //define dma registers
     volatile unsigned int* dma_1_source = (volatile unsigned int*) DMA1_SOURCE_ADDR_L;
-    volatile unsigned int* dma_1_destination = (volatile unsigned int*) DMA1_DESTINATION_ADDR_L;
+    //volatile unsigned int* dma_1_destination = (volatile unsigned int*) DMA1_DESTINATION_ADDR_L;
     volatile unsigned int* dma_1_control = (volatile unsigned int*) DMA1_WORD_COUNT;
 
     *interrupt_master = 0; //disable master interrupt
@@ -33,7 +33,7 @@ IWRAM_CODE void executeVBlankInterrupt(void){
 
     }
 
-    *interrupt_status = INTERRUPT_VBLANK; //restore status
+    *interrupt_status = current_status; //restore status
     *interrupt_check_flag |= INTERRUPT_VBLANK;
     *interrupt_master = 1; //enable master interrupt
 }
