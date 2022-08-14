@@ -66,6 +66,9 @@ volatile unsigned short* reg_key_input = (volatile unsigned short*) REG_KEY_INPU
 volatile unsigned int* reg_display = (volatile unsigned int*) REG_DISPLAY;
 
 
+//global variables
+int pausedTime =0;
+
 
 ///helper functions
 
@@ -89,15 +92,43 @@ void vblankInterruptWait(){
     asm volatile("swi 0x05"); //0x05 is VblankIntrWait in the GBA function table
 }
 
-void setupOneSecTimer(){
+
+void pauseOneSecTimer(){
+    pausedTime = *timer2_data; //reference global variable to store last record
+    *timer1_control = 0x0;
+    *timer2_control = 0x0;
+}
+
+void unpauseOneSecTimer(){
+    *timer2_data = pausedTime; //reference global variable to restore
+
+    //setup timer 1
+    *timer1_control = TIMER_256_CYCLE| TIMER_ENABLE; //set timer 1 to 1024 cycles per increment (16.384 kHz, 61.04 micro seconds)
+    //setup timer 2 to allow overflows from timer 1
+    *timer2_control = TIMER_OVERFLOW_ENABLE | TIMER_ENABLE; 
+}
+
+void resetOneSecTimer(){
     //disable timers before making changes
     *timer1_control = 0x0;
     *timer2_control = 0x0;
 
-    //setup timer 1
+    //reset data
     *timer1_data = 0x0;
-    *timer1_control = TIMER_256_CYCLE| TIMER_ENABLE; //set timer 1 to 1024 cycles per increment (16.384 kHz, 61.04 micro seconds)
+    *timer2_data = 0x0;
+}
 
+void enableOneSecTimer(){
+    //disable timers before making changes
+    *timer1_control = 0x0;
+    *timer2_control = 0x0;
+
+    //reset data
+    *timer1_data = 0x0;
+    *timer2_data = 0x0;
+
+    //setup timer 1
+    *timer1_control = TIMER_256_CYCLE| TIMER_ENABLE; //set timer 1 to 1024 cycles per increment (16.384 kHz, 61.04 micro seconds)
     //setup timer 2 to allow overflows from timer 1
     *timer2_control = TIMER_OVERFLOW_ENABLE | TIMER_ENABLE; 
 }
@@ -159,7 +190,6 @@ int main(void){
     setupInitialInterrupts();
     setupSoundTest();
     setupSoundTimers();
-    setupOneSecTimer();
     
     //consoleDemoInit();
     consoleInit(    0,		// charbase
@@ -222,11 +252,9 @@ int main(void){
     
     //initialize variables to keep track of the state of the paddle & ball
     //set initial positions by modifying the object's attributes in OAM
-
     const int playerWidth  = 8,
               playerHeight = 32;
     
-
     const int opponentWidth = 8,
               opponentHeight = 32;
 
@@ -260,47 +288,112 @@ int main(void){
     int ballX = 22,
         ballY = 96;
 
-    //set initial positions
-    setObjectPosition(paddleAttrs, playerX,playerY);
-    setObjectPosition(ballAttrs, ballX,ballY);
-    setObjectPosition(opponentAttrs, opponentX, opponentY);
-
     unsigned short keyStates = 0;
 
     //game loop variables
+    int showStartScreen = 1; //controls whether start screen shows;
+    int showStartScreenInstruction = 1;
+
     int colorChangeToggle=0; //controls the color of the paddle
     int pauseToggle=0; // controls the pause state of game
 
-    int frame_count= 0;
+    int total_frame_count= 0;
+    int current_frame_count = 0;
     int score = 0;
 
     int previous_sec=0;
+    int last_instruction_sec = 0;
+
     int last_frame_count = 0;
 
+
+    enableOneSecTimer();
     //game loop
     while(1){ 
         vsync(); //skip past the rest of any current V-Blanks period & then skip past the V-Draw period
-        frame_count++; //increment frame count
-
-        //display frame count
-        //iprintf("\x1b[16;0HFrames: %d!\n",frame_count);
-        
         //vblankInterruptWait();
+
+        total_frame_count++; //increment frame count
+        //display frame count
+        //iprintf("\x1b[16;0HTotal Frames: %d!\n",total_frame_count);
 
         //get current key states (REG_KEY_INPUT stores the states inverted)
         keyStates = ( (~(*reg_key_input)) & KEY_ANY); //negate input and mask for any key input
+        
+        if(showStartScreen == 1){   
+
+            //Check if gamer wants to advance past start screen
+            iprintf("\x1b[7;13HPong\n");               //write game title
+
+            //blink instruction every second
+            unsigned short  instruction_timer = *timer2_data;
+            if(instruction_timer > last_instruction_sec){ //if 1 second has passed, implement game logic
+                if(showStartScreenInstruction){
+                    iprintf("\x1b[12;6H<Press A to start>\n"); //write instruction
+                    showStartScreenInstruction = 0;
+                } else{
+                    iprintf("\x1b[12;6H                    "); //write instruction
+                    showStartScreenInstruction = 1;
+                }
+
+                last_instruction_sec = instruction_timer;
+            }
+
+            if(keyStates & KEY_A){ //if up key is pressed, calculate next position upwards
+                showStartScreen = 0; //advance past start screen
+                last_instruction_sec = 0;
+
+                //set initial positions
+                setObjectPosition(paddleAttrs, playerX,playerY);
+                setObjectPosition(ballAttrs, ballX,ballY);
+                setObjectPosition(opponentAttrs, opponentX, opponentY);
+
+                iprintf("\x1b[7;13H       ");              //clear game title
+                iprintf("\x1b[12;6H                   ");  //clear instruction
+
+                enableOneSecTimer();
+            }
+
+            continue;
+
+        } else{ //setup game screen
+
+            //if game is pasued and the B key is pressed, go back to start screen
+            if(pauseToggle && keyStates & KEY_B){ 
+                showStartScreen = 1; //advance past start screen
+                current_frame_count = 0; //reset frame count
+                last_frame_count = 0;
+                previous_sec = 0; 
+
+                pauseToggle = !pauseToggle;
+
+                score = 0; //reset score
+                iprintf("\x1b[2J\n"); //clear screen
+                enableOneSecTimer();
+                continue;
+            }
+
+        }
+
+
 
         if(keyStates & KEY_START){ //if start key is pressed, "pause" game via not updating objects
             pauseToggle = !pauseToggle;
             if(pauseToggle){
-                iprintf("\x1b[10;15HPause\n"); //add pause to screen
+                current_frame_count = 0; //reset frame count
+                last_frame_count = 0;
+
+                iprintf("\x1b[10;12HPause\n"); //add pause to screen
+                pauseOneSecTimer();
             } else{
-                iprintf("\x1b[10;15H       "); //clear pause
+                iprintf("\x1b[10;12H       "); //clear pause
+                unpauseOneSecTimer();
             }
         }
 
         if(!pauseToggle){
-            
+            current_frame_count++;
+
             //Update player position
             if(keyStates & KEY_UP){ //if up key is pressed, calculate next position upwards
                 playerY = clampValue(playerY - playerVelocity, 0, playerMaxClampY);
@@ -347,6 +440,14 @@ int main(void){
                     colorChangeToggle = 1;
                 }
 
+            //To-Do: Figure out why this check is buggy (ball doesn't always rebound)
+            //check bounds to see if ball intersects with the enemy paddle
+            } else if( (ballX >= opponentX && ballX <= opponentX + opponentWidth) && 
+                (ballY >= opponentY && ballY <= opponentY + opponentHeight ) ){ 
+
+                ballX= opponentX - opponentWidth; //set ball position to edge of opponent paddle
+                ballVelocityX = -ballVelocityX; // change X velocity to rebound the ball. Y position unchanged
+
             } else { //if no intersection, check if ball hits screen boundaries and correct velocity
                 if(ballX == 0 || ballX == ballMaxClampX){
                     if(ballX == ballMaxClampX){
@@ -371,15 +472,15 @@ int main(void){
         //overflow of timer register (2^16 = 65,536). Because approximation is less than actual, 
         //frames per second (FPS aka frame rate) is a little lower
         unsigned short one_sec_timer_count = *timer2_data;
-        iprintf("\x1b[18;23H%d sec\n",one_sec_timer_count);
+        iprintf("\x1b[18;21H%d sec\n",one_sec_timer_count);
 
         if(one_sec_timer_count > previous_sec){ //if 1 second has passed, implement game logic
             //caculate & display FPS
-            int fps = frame_count - last_frame_count;
+            int fps = current_frame_count - last_frame_count;
             iprintf("\x1b[18;0HFPS: %d\n",fps);
 
             //update values for next calculation
-            last_frame_count = frame_count;
+            last_frame_count = current_frame_count;
             previous_sec = one_sec_timer_count;
         }
     } 
