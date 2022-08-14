@@ -9,7 +9,7 @@
 //project includes
 #include "gba_graphics.h"
 #include "gba_helper_funcs.h"
-#include "test.h"
+#include "pong.h"
 
 #include "vblanks_interrupt.iwram.h"
 
@@ -68,7 +68,7 @@ volatile unsigned int* reg_display = (volatile unsigned int*) REG_DISPLAY;
 
 //global variables
 int pausedTime =0;
-
+int previousSoundTime= 0;
 
 ///helper functions
 
@@ -134,7 +134,7 @@ void enableOneSecTimer(){
 }
 
 //sound functions
-void setupSoundTimers(){
+void setupSoundTimer(){
     *timer0_control = 0x0; //disable timer 0
 
     unsigned short ticks_per_sample = CLOCK_HZ / TEST_AUDIO_SAMPLE_RATE; //divide clock speed (~16.78 MHz) by audio sample rate
@@ -143,10 +143,29 @@ void setupSoundTimers(){
     *timer0_data = 65536 - ticks_per_sample; 
 
     //divide total number of ticks (fraction of clock time) by number of cycles for a single V blank period
-    CHANNEL_A_VBLANKS_REMAINING = test_bytes * ticks_per_sample * (1.0 / CYCLES_PER_BLANK);
+    CHANNEL_A_VBLANKS_REMAINING = pong_size * ticks_per_sample * (1.0 / CYCLES_PER_BLANK);
     CHANNEL_A_VBLANKS_TOTAL = CHANNEL_A_VBLANKS_REMAINING;
 
     *timer0_control = TIMER_ENABLE | TIMER_1_CYCLE; //enable timer 0 for 1 cycle mode (16.78 MHz frequency)
+}
+
+
+void pauseSoundTimer(){
+    previousSoundTime = *timer0_data;
+    *timer0_control = 0x0; //disable timer 0
+
+    *dma_1_control = 0x0;
+
+    *interrupt_individual &= 0xFFFE; //enable VBLANK interrupt
+}
+
+void unpauseSoundTimer(){
+    *timer0_data = previousSoundTime;
+    *timer0_control = TIMER_ENABLE | TIMER_1_CYCLE; //enable timer 0 for 1 cycle mode (16.78 MHz frequency)
+
+    *dma_1_control = DMA_DEST_FIXED | DMA_REPEAT | DMA_32 | DMA_SYNC_TO_TIMER_0 | DMA_ENABLE;
+
+    *interrupt_individual |= INTERRUPT_VBLANK; //enable VBLANK interrupt
 }
 
 
@@ -162,7 +181,8 @@ void setupSoundTest(){
     *master_sound_reg = SOUND_MASTER_ENABLE; //enable all sounds
 
     //set dma source address for test data address
-    *dma_1_source = (unsigned int)  test_sound_data; //set dma source value to address of test sound data
+    //*dma_1_source = (unsigned int)  test_sound_data; //set dma source value to address of test sound data
+    *dma_1_source = (unsigned int)  pong; //set dma source value to address of test sound data
 
     //setup dma destination address fifo a
     *dma_1_destination = (unsigned int)  fifo_buffer_a; //set dma destination to fifo a
@@ -186,12 +206,10 @@ void setupInitialInterrupts(){
 
 
 int main(void){
-
     setupInitialInterrupts();
     setupSoundTest();
-    setupSoundTimers();
+    setupSoundTimer();
     
-    //consoleDemoInit();
     consoleInit(    0,		// charbase
 					4,		// mapbase
 					0,		// background number
@@ -203,8 +221,8 @@ int main(void){
     BG_COLORS[0]=RGB8(255,127,255);
 	BG_COLORS[241]=RGB5(31,31,31);
 
-    //select BG mode 0, select BG0/BG1/OBJ, and set OBJ character to be handled in memory 1-dimensional
-    SetMode(MODE_0 | OBJ_ON | BG0_ON | OBJ_1D_MAP);
+    //select BG mode 0, select BG0, and set OBJ character to be handled in memory 1-dimensional
+    SetMode(MODE_0 | BG0_ON | OBJ_1D_MAP);
 
     // Write the tiles for our sprites into the fourth tile block in VRAM
     //first index is for the tile block; second index is for the address within the tile block
@@ -258,12 +276,12 @@ int main(void){
     const int opponentWidth = 8,
               opponentHeight = 32;
 
-    const int playerMaxClampY = SCREEN_HEIGHT - playerHeight,
-              playerMaxClampX = SCREEN_WIDTH - playerWidth;
+    const int playerMaxClampY = SCREEN_HEIGHT - playerHeight;
+    //const int playerMaxClampX = SCREEN_WIDTH - playerWidth;
 
 
-    const int opponentMaxClampY = SCREEN_HEIGHT - opponentHeight,
-              opponentMaxClampX = SCREEN_WIDTH - opponentWidth;   
+    const int opponentMaxClampY = SCREEN_HEIGHT - opponentHeight;
+    //const int opponentMaxClampX = SCREEN_WIDTH - opponentWidth;   
 
     const int ballWidth  = 8,
               ballHeight = 8;
@@ -279,11 +297,11 @@ int main(void){
         ballVelocityY = 1;
     
     //initial display positions
-    int playerX = 20,
+    int playerX = 8,
         playerY = 96;
 
-    int opponentX = SCREEN_WIDTH - ( 2* opponentWidth),
-        opponentY= SCREEN_HEIGHT - ( 2* opponentHeight);
+    int opponentX = SCREEN_WIDTH - ( 2 * opponentWidth),
+        opponentY = SCREEN_HEIGHT - ( 2 * opponentHeight);
 
     int ballX = 22,
         ballY = 96;
@@ -306,8 +324,8 @@ int main(void){
 
     int last_frame_count = 0;
 
+    enableOneSecTimer(); //start timer
 
-    enableOneSecTimer();
     //game loop
     while(1){ 
         vsync(); //skip past the rest of any current V-Blanks period & then skip past the V-Draw period
@@ -323,7 +341,7 @@ int main(void){
         if(showStartScreen == 1){   
 
             //Check if gamer wants to advance past start screen
-            iprintf("\x1b[7;13HPong\n");               //write game title
+            iprintf("\x1b[6;12HPong\n");               //write game title
 
             //blink instruction every second
             unsigned short  instruction_timer = *timer2_data;
@@ -332,7 +350,7 @@ int main(void){
                     iprintf("\x1b[12;6H<Press A to start>\n"); //write instruction
                     showStartScreenInstruction = 0;
                 } else{
-                    iprintf("\x1b[12;6H                    "); //write instruction
+                    iprintf("\x1b[12;6H                     "); //write instruction
                     showStartScreenInstruction = 1;
                 }
 
@@ -348,10 +366,12 @@ int main(void){
                 setObjectPosition(ballAttrs, ballX,ballY);
                 setObjectPosition(opponentAttrs, opponentX, opponentY);
 
-                iprintf("\x1b[7;13H       ");              //clear game title
+                iprintf("\x1b[6;12H       ");              //clear game title
                 iprintf("\x1b[12;6H                   ");  //clear instruction
 
                 enableOneSecTimer();
+
+                SetMode(MODE_0 | OBJ_ON | BG0_ON | OBJ_1D_MAP);
             }
 
             continue;
@@ -370,11 +390,12 @@ int main(void){
                 score = 0; //reset score
                 iprintf("\x1b[2J\n"); //clear screen
                 enableOneSecTimer();
+
+                SetMode(MODE_0 | BG0_ON | OBJ_1D_MAP); //show Object BG again
                 continue;
             }
 
         }
-
 
 
         if(keyStates & KEY_START){ //if start key is pressed, "pause" game via not updating objects
@@ -421,6 +442,7 @@ int main(void){
             if(opponentY == 0 || opponentY == opponentMaxClampY ){ //if oponent position is equal to bounds, flip velocity
                 opponentVelocity *= -1;
             }
+
             opponentY = clampValue(opponentY + opponentVelocity, 0, opponentMaxClampY);
             setObjectPosition(opponentAttrs, opponentX, opponentY);
 
@@ -464,7 +486,7 @@ int main(void){
             ballY = clampValue(ballY+ ballVelocityY, 0, ballMaxClampY);
             setObjectPosition(ballAttrs, ballX,ballY);
 
-            iprintf("\x1b[1;0HScore: %d\n",score);
+            iprintf("\x1b[1;10HScore: %d\n",score);
         }
 
         //report number of seconds past via timer 2 value (overflow of timer 1 is approx. 1 sec)
@@ -472,12 +494,17 @@ int main(void){
         //overflow of timer register (2^16 = 65,536). Because approximation is less than actual, 
         //frames per second (FPS aka frame rate) is a little lower
         unsigned short one_sec_timer_count = *timer2_data;
-        iprintf("\x1b[18;21H%d sec\n",one_sec_timer_count);
+
+        unsigned short seconds = (one_sec_timer_count % 60);
+        unsigned short minutes = ((one_sec_timer_count % 3600) / 60);
+        unsigned short hours = (one_sec_timer_count/ 3600);
+
+        iprintf("\x1b[18;18H%d:%02d:%02d\n", hours, minutes, seconds);
 
         if(one_sec_timer_count > previous_sec){ //if 1 second has passed, implement game logic
             //caculate & display FPS
             int fps = current_frame_count - last_frame_count;
-            iprintf("\x1b[18;0HFPS: %d\n",fps);
+            iprintf("\x1b[18;5HFPS: %d\n",fps);
 
             //update values for next calculation
             last_frame_count = current_frame_count;

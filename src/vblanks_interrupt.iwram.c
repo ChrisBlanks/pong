@@ -1,5 +1,5 @@
 #include "gba_defines.h"
-#include "test.h"
+#include "pong.h"
 
 #include "vblanks_interrupt.iwram.h"
 
@@ -24,7 +24,7 @@ IWRAM_CODE void executeVBlankInterrupt(void){
             
             CHANNEL_A_VBLANKS_REMAINING = CHANNEL_A_VBLANKS_TOTAL;
             *dma_1_control = 0x0; //disable DMA before making changes
-            *dma_1_source = (unsigned int)  test_sound_data; //set dma source value to address of test sound data
+            *dma_1_source = (unsigned int) pong; //set dma source value to address of test sound data
             *dma_1_control = DMA_DEST_FIXED | DMA_REPEAT | DMA_32 | DMA_SYNC_TO_TIMER_0 | DMA_ENABLE; //reenable dma1   
 
         } else{ //decrement num of vblanks remaining
