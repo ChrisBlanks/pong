@@ -18,9 +18,12 @@ A slight spin on the game 'Pong' built for GBA.
     - [devkitPro install location]\devkitARM\bin
     - [devkitPro install location]\tools\bin 
 - libgba (0.5.2)
-  - Comes installed with devkitpro
+  - **Comes installed with devkitpro**
   - Latest release:
     - https://github.com/devkitPro/libgba/releases/tag/v0.5.2
+- raw2c
+  - **Comes installed with devkitpro**
+  - Converts music file into code that can be loaded into GBA registers
 - make (latest)
   - For Windows, the latest GnuWin32 make software should be sufficient: 
     - https://gnuwin32.sourceforge.net/packages/make.htm
